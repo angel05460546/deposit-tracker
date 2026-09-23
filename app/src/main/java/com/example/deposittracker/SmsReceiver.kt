@@ -7,9 +7,10 @@ import android.provider.Telephony
 
 class SmsReceiver : BroadcastReceiver() {
 
-    // اگه بخواید فقط پیامک‌های یه شماره‌ی خاص بررسی بشن، بخشی از اون شماره رو اینجا بذارید.
     private val senderKeyword = ""
-    private val bodyKeywords = listOf("واریز", "blu", "بلو")
+
+    private val depositRegex = Regex("([\\d,]{4,})\\s*ریال[^\\n]{0,40}به حساب شما نشست")
+    private val withdrawRegex = Regex("([\\d,]{4,})\\s*ریال[^\\n]{0,40}از حساب شما پرید")
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
@@ -20,19 +21,19 @@ class SmsReceiver : BroadcastReceiver() {
             val body = msg.messageBody ?: ""
 
             if (senderKeyword.isNotEmpty() && !sender.contains(senderKeyword, true)) continue
-            if (bodyKeywords.none { body.contains(it, true) }) continue
 
-            val amount = extractAmount(body) ?: continue
-            Store.addEntry(context, amount, "پیامک")
+            val depositMatch = depositRegex.find(body)
+            if (depositMatch != null) {
+                val amount = depositMatch.groupValues[1].replace(",", "").toLongOrNull()
+                if (amount != null) Store.addEntry(context, amount, "واریز", "پیامک")
+                continue
+            }
+
+            val withdrawMatch = withdrawRegex.find(body)
+            if (withdrawMatch != null) {
+                val amount = withdrawMatch.groupValues[1].replace(",", "").toLongOrNull()
+                if (amount != null) Store.addEntry(context, amount, "برداشت", "پیامک")
+            }
         }
-    }
-
-    private fun extractAmount(text: String): Long? {
-        val regex = Regex("[\\d,]{4,}")
-        return regex.findAll(text)
-            .map { it.value.replace(",", "") }
-            .mapNotNull { it.toLongOrNull() }
-            .filter { it >= 1000 }
-            .maxOrNull()
     }
 }
