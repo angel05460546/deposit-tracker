@@ -8,6 +8,7 @@ import android.text.InputType
 import android.view.Gravity
 import android.view.View
 import android.widget.*
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -20,6 +21,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var permissionButton: Button
     private lateinit var historyContainer: LinearLayout
     private lateinit var amountInput: EditText
+    private lateinit var goalInput: EditText
+    private lateinit var goalStatusText: TextView
+    private lateinit var goalProgress: ProgressBar
 
     private val smsPermissions = arrayOf(
         Manifest.permission.RECEIVE_SMS,
@@ -45,11 +49,18 @@ class MainActivity : AppCompatActivity() {
             setPadding(pad, dp(40), pad, pad)
         }
 
-        root.addView(TextView(this).apply {
+        val titleRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        titleRow.addView(TextView(this).apply {
             text = "دفترچه واریز روزانه"
             textSize = 20f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
+        titleRow.addView(Button(this).apply {
+            text = "ریست"
+            setOnClickListener { confirmReset() }
+        })
+        root.addView(titleRow)
 
         permissionButton = Button(this).apply {
             text = "اجازه‌ی خواندن پیامک رو فعال کن"
@@ -115,6 +126,43 @@ class MainActivity : AppCompatActivity() {
         statsRow.addView(withdrawBox)
         root.addView(statsRow, params(dp(20)))
 
+        // --- هدف پس‌انداز ---
+        root.addView(TextView(this).apply {
+            text = "هدف پس‌انداز"
+            textSize = 15f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+        }, params(dp(28)))
+
+        val goalRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        goalInput = EditText(this).apply {
+            hint = "مبلغ هدف به ریال"
+            inputType = InputType.TYPE_CLASS_NUMBER
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        }
+        goalRow.addView(goalInput)
+        goalRow.addView(Button(this).apply {
+            text = "ذخیره"
+            setOnClickListener {
+                val amount = goalInput.text.toString().toLongOrNull()
+                Store.setGoal(this@MainActivity, if (amount != null && amount > 0) amount else null)
+                refresh()
+                Toast.makeText(this@MainActivity, "هدف ذخیره شد", Toast.LENGTH_SHORT).show()
+            }
+        }.apply { (layoutParams as? LinearLayout.LayoutParams)?.marginStart = dp(8) })
+        root.addView(goalRow, params(dp(8)))
+
+        goalProgress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+        }
+        root.addView(goalProgress, params(dp(12)))
+
+        goalStatusText = TextView(this).apply {
+            textSize = 13f
+            gravity = Gravity.CENTER
+        }
+        root.addView(goalStatusText, params(dp(6)))
+
+        // --- ثبت دستی ---
         root.addView(TextView(this).apply {
             text = "ثبت دستی"
             textSize = 15f
@@ -165,6 +213,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun confirmReset() {
+        AlertDialog.Builder(this)
+            .setTitle("پاک کردن همه‌ی تراکنش‌ها")
+            .setMessage("مطمئنی؟ این کار همه‌ی تاریخچه‌ی واریز و برداشت رو برای همیشه پاک می‌کنه.")
+            .setPositiveButton("بله، پاک کن") { _, _ ->
+                Store.clearAll(this)
+                refresh()
+                Toast.makeText(this, "پاک شد", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("انصراف", null)
+            .show()
+    }
+
     private fun refresh() {
         val hasPermission = ContextCompat.checkSelfPermission(
             this, Manifest.permission.RECEIVE_SMS
@@ -179,6 +240,23 @@ class MainActivity : AppCompatActivity() {
         netText.text = fmt(net)
         depositText.text = fmt(totalDeposit)
         withdrawText.text = fmt(totalWithdraw)
+
+        val goal = Store.getGoal(this)
+        if (goal != null && goal > 0) {
+            val remaining = (goal - net).coerceAtLeast(0)
+            val percent = ((net.toDouble() / goal.toDouble()) * 100).coerceIn(0.0, 100.0).toInt()
+            goalInput.setText(goal.toString())
+            goalProgress.visibility = View.VISIBLE
+            goalProgress.progress = percent
+            if (net >= goal) {
+                goalStatusText.text = "🎉 به هدفت رسیدی!"
+            } else {
+                goalStatusText.text = "مانده تا هدف: ${fmt(remaining)} ریال ($percent٪)"
+            }
+        } else {
+            goalProgress.visibility = View.GONE
+            goalStatusText.text = "هنوز هدفی تنظیم نشده"
+        }
 
         historyContainer.removeAllViews()
         if (entries.isEmpty()) {
