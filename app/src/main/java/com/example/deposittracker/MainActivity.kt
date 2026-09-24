@@ -23,7 +23,8 @@ class MainActivity : AppCompatActivity() {
 
     private val smsPermissions = arrayOf(
         Manifest.permission.RECEIVE_SMS,
-        Manifest.permission.READ_SMS
+        Manifest.permission.READ_SMS,
+        Manifest.permission.POST_NOTIFICATIONS
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
