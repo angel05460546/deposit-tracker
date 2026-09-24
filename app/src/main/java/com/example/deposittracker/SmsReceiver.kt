@@ -25,6 +25,9 @@ class SmsReceiver : BroadcastReceiver() {
             val sender = msg.originatingAddress ?: ""
             val body = msg.messageBody ?: ""
 
+            // اعلان دیباگ: برای هر پیامکی که می‌رسه نشون می‌ده، تا مطمئن بشیم گیرنده فعاله
+            notify(context, "پیامک دریافت شد (دیباگ)", "فرستنده: $sender | متن: ${body.take(60)}")
+
             if (senderKeyword.isNotEmpty() && !sender.contains(senderKeyword, true)) continue
 
             val depositMatch = depositRegex.find(body)
@@ -64,6 +67,7 @@ class SmsReceiver : BroadcastReceiver() {
             .setSmallIcon(android.R.drawable.stat_notify_chat)
             .setContentTitle(title)
             .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .build()
@@ -71,7 +75,7 @@ class SmsReceiver : BroadcastReceiver() {
         try {
             NotificationManagerCompat.from(context).notify(System.currentTimeMillis().toInt(), notification)
         } catch (e: SecurityException) {
-            // اجازه‌ی نوتیفیکیشن داده نشده؛ داده که ذخیره شد، فقط اعلان نشون داده نمی‌شه
+            // اجازه‌ی نوتیفیکیشن داده نشده
         }
     }
 }
