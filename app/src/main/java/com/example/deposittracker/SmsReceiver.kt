@@ -25,9 +25,6 @@ class SmsReceiver : BroadcastReceiver() {
             val sender = msg.originatingAddress ?: ""
             val body = msg.messageBody ?: ""
 
-            // اعلان دیباگ: برای هر پیامکی که می‌رسه نشون می‌ده، تا مطمئن بشیم گیرنده فعاله
-            notify(context, "پیامک دریافت شد (دیباگ)", "فرستنده: $sender | متن: ${body.take(60)}")
-
             if (senderKeyword.isNotEmpty() && !sender.contains(senderKeyword, true)) continue
 
             val depositMatch = depositRegex.find(body)
