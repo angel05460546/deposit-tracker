@@ -9,6 +9,7 @@ data class Entry(val date: String, val amount: Long, val type: String, val sourc
 object Store {
     private const val PREFS = "deposit_tracker_prefs"
     private const val KEY = "entries_json"
+    private const val GOAL_KEY = "goal_amount"
     private val lock = Any()
 
     fun getEntries(context: Context): List<Entry> {
@@ -45,6 +46,28 @@ object Store {
             entry.put("source", source)
             arr.put(entry)
             prefs.edit().putString(KEY, arr.toString()).commit()
+        }
+    }
+
+    fun clearAll(context: Context) {
+        synchronized(lock) {
+            val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            prefs.edit().putString(KEY, "[]").commit()
+        }
+    }
+
+    fun getGoal(context: Context): Long? {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val value = prefs.getLong(GOAL_KEY, -1L)
+        return if (value < 0) null else value
+    }
+
+    fun setGoal(context: Context, amount: Long?) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (amount == null) {
+            prefs.edit().remove(GOAL_KEY).apply()
+        } else {
+            prefs.edit().putLong(GOAL_KEY, amount).apply()
         }
     }
 }
