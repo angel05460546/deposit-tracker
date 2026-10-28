@@ -7,11 +7,20 @@ import android.os.Bundle
 import android.text.InputType
 import android.view.Gravity
 import android.view.View
-import android.widget.*
+import android.widget.Button
+import android.widget.EditText
+import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.ScrollView
+import android.widget.TextView
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
 
@@ -21,9 +30,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var permissionButton: Button
     private lateinit var historyContainer: LinearLayout
     private lateinit var amountInput: EditText
-    private lateinit var goalInput: EditText
+    private lateinit var goalAmountInput: EditText
+    private lateinit var goalDaysInput: EditText
     private lateinit var goalStatusText: TextView
     private lateinit var goalProgress: ProgressBar
+
+    private val dayMs = 24L * 60 * 60 * 1000
 
     private val smsPermissions = arrayOf(
         Manifest.permission.RECEIVE_SMS,
@@ -126,30 +138,42 @@ class MainActivity : AppCompatActivity() {
         statsRow.addView(withdrawBox)
         root.addView(statsRow, params(dp(20)))
 
-        // --- هدف پس‌انداز ---
+        // ---------- برنامه‌ی هدف ----------
         root.addView(TextView(this).apply {
-            text = "هدف پس‌انداز"
+            text = "برنامه‌ی هدف"
             textSize = 15f
             setTypeface(typeface, android.graphics.Typeface.BOLD)
         }, params(dp(28)))
 
-        val goalRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        goalInput = EditText(this).apply {
-            hint = "مبلغ هدف به ریال"
+        goalAmountInput = EditText(this).apply {
+            hint = "مبلغ هدف (ریال)"
             inputType = InputType.TYPE_CLASS_NUMBER
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         }
-        goalRow.addView(goalInput)
-        goalRow.addView(Button(this).apply {
-            text = "ذخیره"
+        root.addView(goalAmountInput, params(dp(8)))
+
+        goalDaysInput = EditText(this).apply {
+            hint = "مدت (تعداد روز)"
+            inputType = InputType.TYPE_CLASS_NUMBER
+        }
+        root.addView(goalDaysInput, params(dp(4)))
+
+        val goalButtons = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+        goalButtons.addView(Button(this).apply {
+            text = "ذخیره و شروع از امروز"
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setOnClickListener { saveGoal() }
+        })
+        goalButtons.addView(Button(this).apply {
+            text = "حذف هدف"
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { marginStart = dp(8) }
             setOnClickListener {
-                val amount = goalInput.text.toString().toLongOrNull()
-                Store.setGoal(this@MainActivity, if (amount != null && amount > 0) amount else null)
+                Store.clearGoal(this@MainActivity)
+                goalAmountInput.setText("")
+                goalDaysInput.setText("")
                 refresh()
-                Toast.makeText(this@MainActivity, "هدف ذخیره شد", Toast.LENGTH_SHORT).show()
             }
-        }.apply { (layoutParams as? LinearLayout.LayoutParams)?.marginStart = dp(8) })
-        root.addView(goalRow, params(dp(8)))
+        })
+        root.addView(goalButtons, params(dp(8)))
 
         goalProgress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
             max = 100
@@ -157,12 +181,13 @@ class MainActivity : AppCompatActivity() {
         root.addView(goalProgress, params(dp(12)))
 
         goalStatusText = TextView(this).apply {
-            textSize = 13f
-            gravity = Gravity.CENTER
+            textSize = 14f
+            gravity = Gravity.START
+            setLineSpacing(0f, 1.3f)
         }
-        root.addView(goalStatusText, params(dp(6)))
+        root.addView(goalStatusText, params(dp(8)))
 
-        // --- ثبت دستی ---
+        // ---------- ثبت دستی ----------
         root.addView(TextView(this).apply {
             text = "ثبت دستی"
             textSize = 15f
@@ -203,7 +228,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun addManual(type: String) {
-        val amount = amountInput.text.toString().toLongOrNull()
+        val amount = Jalali.normalizeDigits(amountInput.text.toString()).toLongOrNull()
         if (amount != null && amount > 0) {
             Store.addEntry(this, amount, type, "دستی")
             amountInput.setText("")
@@ -211,6 +236,18 @@ class MainActivity : AppCompatActivity() {
         } else {
             Toast.makeText(this, "یه مبلغ معتبر وارد کن", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun saveGoal() {
+        val amount = Jalali.normalizeDigits(goalAmountInput.text.toString()).toLongOrNull()
+        val days = Jalali.normalizeDigits(goalDaysInput.text.toString()).toIntOrNull()
+        if (amount == null || amount <= 0 || days == null || days <= 0) {
+            Toast.makeText(this, "مبلغ هدف و تعداد روز رو درست وارد کن", Toast.LENGTH_SHORT).show()
+            return
+        }
+        Store.setGoal(this, amount, days)
+        refresh()
+        Toast.makeText(this, "برنامه از امروز شروع شد", Toast.LENGTH_SHORT).show()
     }
 
     private fun confirmReset() {
@@ -241,22 +278,7 @@ class MainActivity : AppCompatActivity() {
         depositText.text = fmt(totalDeposit)
         withdrawText.text = fmt(totalWithdraw)
 
-        val goal = Store.getGoal(this)
-        if (goal != null && goal > 0) {
-            val remaining = (goal - net).coerceAtLeast(0)
-            val percent = ((net.toDouble() / goal.toDouble()) * 100).coerceIn(0.0, 100.0).toInt()
-            goalInput.setText(goal.toString())
-            goalProgress.visibility = View.VISIBLE
-            goalProgress.progress = percent
-            if (net >= goal) {
-                goalStatusText.text = "🎉 به هدفت رسیدی!"
-            } else {
-                goalStatusText.text = "مانده تا هدف: ${fmt(remaining)} ریال ($percent٪)"
-            }
-        } else {
-            goalProgress.visibility = View.GONE
-            goalStatusText.text = "هنوز هدفی تنظیم نشده"
-        }
+        refreshGoal(entries)
 
         historyContainer.removeAllViews()
         if (entries.isEmpty()) {
@@ -269,7 +291,7 @@ class MainActivity : AppCompatActivity() {
                 val sign = if (entry.type == "برداشت") "-" else "+"
                 val color = if (entry.type == "برداشت") "#C0392B" else "#2E8B57"
                 historyContainer.addView(TextView(this).apply {
-                    text = "${entry.date}   $sign${fmt(entry.amount)} ریال   (${entry.type} — ${entry.source})"
+                    text = "${Jalali.format(entry.date)}   $sign${fmt(entry.amount)} ریال   (${entry.type} — ${entry.source})"
                     setPadding(0, dp(6), 0, dp(6))
                     setTextColor(Color.parseColor(color))
                 })
@@ -277,7 +299,68 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun fmt(n: Long): String = String.format("%,d", n)
+    private fun refreshGoal(entries: List<Entry>) {
+        val goal = Store.getGoal(this)
+        if (goal == null) {
+            goalProgress.visibility = View.GONE
+            goalStatusText.text = "هنوز برنامه‌ای تنظیم نشده.\nمبلغ هدف و تعداد روز رو وارد کن و ذخیره بزن."
+            return
+        }
+
+        if (goalAmountInput.text.isNullOrBlank()) goalAmountInput.setText(goal.amount.toString())
+        if (goalDaysInput.text.isNullOrBlank()) goalDaysInput.setText(goal.days.toString())
+
+        val now = System.currentTimeMillis()
+        val startMillis = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).parse(goal.start)?.time ?: now
+        val elapsedRaw = ((now - startMillis) / dayMs).toInt() + 1
+        val dayIndex = elapsedRaw.coerceIn(1, goal.days)
+
+        // فقط تراکنش‌های بعد از شروع برنامه حساب می‌شن
+        val sinceStart = entries.filter { it.date >= goal.start }
+        val saved = sinceStart.filter { it.type == "واریز" }.sumOf { it.amount } -
+                sinceStart.filter { it.type == "برداشت" }.sumOf { it.amount }
+
+        val daily = Math.ceil(goal.amount.toDouble() / goal.days).toLong()
+        val expected = (goal.amount.toDouble() * dayIndex / goal.days).toLong()
+        val diff = saved - expected
+        val remaining = (goal.amount - saved).coerceAtLeast(0)
+
+        val todayPrefix = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+        val todayNet = entries.filter { it.date.startsWith(todayPrefix) }
+            .sumOf { if (it.type == "برداشت") -it.amount else it.amount }
+
+        val percent = ((saved.toDouble() / goal.amount.toDouble()) * 100).coerceIn(0.0, 100.0).toInt()
+        goalProgress.visibility = View.VISIBLE
+        goalProgress.progress = percent
+
+        val endMillis = startMillis + (goal.days - 1) * dayMs
+        val lines = mutableListOf<String>()
+        lines.add("هدف: ${fmt(goal.amount)} ریال در ${goal.days} روز")
+        lines.add("از ${Jalali.formatMillis(startMillis)} تا ${Jalali.formatMillis(endMillis)}  (روز $dayIndex از ${goal.days})")
+        lines.add("جمع‌شده تا الان: ${fmt(saved)} ریال ($percent٪)")
+        lines.add("سهم روزانه: ${fmt(daily)} ریال")
+        val todayMark = if (todayNet >= daily) "✅" else "⏳"
+        lines.add("امروز: ${fmt(todayNet)} از ${fmt(daily)} $todayMark")
+
+        if (saved >= goal.amount) {
+            lines.add("🎉 به هدفت رسیدی!")
+        } else if (elapsedRaw > goal.days) {
+            lines.add("⏰ مدت برنامه تموم شده؛ ${fmt(remaining)} ریال کم داری")
+        } else {
+            when {
+                diff > 0 -> lines.add("✅ ${fmt(diff)} ریال از برنامه جلوتری")
+                diff < 0 -> lines.add("⚠️ ${fmt(-diff)} ریال از برنامه عقبی")
+                else -> lines.add("👌 دقیقاً روی برنامه‌ای")
+            }
+            val daysLeft = goal.days - elapsedRaw + 1
+            val perDay = Math.ceil(remaining.toDouble() / daysLeft).toLong()
+            lines.add("برای رسیدن به هدف از امروز روزی ${fmt(perDay)} ریال لازمه ($daysLeft روز مونده)")
+        }
+
+        goalStatusText.text = lines.joinToString("\n")
+    }
+
+    private fun fmt(n: Long): String = String.format(Locale.US, "%,d", n)
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
